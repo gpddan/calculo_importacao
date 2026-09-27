@@ -10,14 +10,13 @@ st.set_page_config(
 
 
 # --- FUNÇÃO PARA BUSCAR COTAÇÕES EM TEMPO REAL COM FALLBACK ---
-@st.cache_data(ttl=21600)  # Cache de 6 horas (21600 segundos)
+@st.cache_data(ttl=21600)  # Cache de 6 horas
 def buscar_cotacoes():
     tz = zoneinfo.ZoneInfo("America/Sao_Paulo")
     horario_atualizacao = datetime.now(tz).strftime("%H:%M - %d/%m/%Y")
 
     cotacoes = {
         "JPY": 0.033,
-        "USD": 5.70,
         "ultima_atualizacao": horario_atualizacao,
     }
 
@@ -31,33 +30,24 @@ def buscar_cotacoes():
             data = json.loads(response.read().decode())
             cotacoes["JPY"] = float(data["rates"]["BRL"])
 
-        url_usd = "https://open.er-api.com/v6/latest/USD"
-        req_usd = urllib.request.Request(
-            url_usd, headers={"User-Agent": "Mozilla/5.0"}
-        )
-        with urllib.request.urlopen(req_usd, timeout=5) as response:
-            data = json.loads(response.read().decode())
-            cotacoes["USD"] = float(data["rates"]["BRL"])
-
         return cotacoes
     except Exception:
         pass  # Se falhar, tenta a API secundária
 
     # Tentativa 2: AwesomeAPI (Secundária)
     try:
-        url_awesome = "https://economia.awesomeapi.com.br/last/JPY-BRL,USD-BRL"
+        url_awesome = "https://economia.awesomeapi.com.br/last/JPY-BRL"
         req_awesome = urllib.request.Request(
             url_awesome, headers={"User-Agent": "Mozilla/5.0"}
         )
         with urllib.request.urlopen(req_awesome, timeout=5) as response:
             data = json.loads(response.read().decode())
             cotacoes["JPY"] = float(data["JPYBRL"]["bid"])
-            cotacoes["USD"] = float(data["USDBRL"]["bid"])
 
         return cotacoes
     except Exception:
         st.warning(
-            "⚠️ Não foi possível obter o câmbio em tempo real. A utilizar valores padrão."
+            "⚠️ Não foi possível obter o câmbio em tempo real. A utilizar valor padrão."
         )
 
     return cotacoes
@@ -72,22 +62,21 @@ st.caption(
     f"ℹ️ O câmbio é atualizado automaticamente a cada 6 horas. **Última atualização:** {cotacoes['ultima_atualizacao']}"
 )
 
-col_cot1, col_cot2 = st.columns(2)
-col_cot1.metric("Cotação JPY/BRL (Iene)", f"R$ {cotacoes['JPY']:.4f}")
-col_cot2.metric("Cotação USD/BRL (Dólar)", f"R$ {cotacoes['USD']:.2f}")
+st.metric("Cotação JPY/BRL (Iene)", f"R$ {cotacoes['JPY']:.4f}")
 
 st.markdown("---")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Japão", "Japão DHL", "Frete 2026", "Shopee"])
+tab1, tab2 = st.tabs(["Japão", "Frete 2026"])
 
 # --- ABA JAPÃO ---
 with tab1:
-    st.header("Cálculo Japão (Correios / SAL / EMS)")
+    st.header("Cálculo Detalhado - Japão")
 
+    # Inputs principais
     col1, col2 = st.columns(2)
     with col1:
         valor_iene = st.number_input(
-            "Valor em Iene (¥)",
+            "Valor do Produto em Iene (¥)",
             min_value=0.0,
             value=4400.0,
             step=100.0,
@@ -102,72 +91,79 @@ with tab1:
             key="j_cot",
         )
 
-    valor_produto_brl = valor_iene * cotacao_iene
-    frete_brl = st.number_input(
-        "Frete em Reais (R$)",
-        min_value=0.0,
-        value=0.0,
-        step=5.0,
-        key="j_frete",
-    )
-
-    valor_aduaneiro = valor_produto_brl + frete_brl
-    imposto_importacao = valor_aduaneiro * 0.60
-    total = valor_aduaneiro + imposto_importacao
-
-    st.markdown("---")
-    st.subheader("Resumo do Cálculo")
-
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Valor Produto (R$)", f"R$ {valor_produto_brl:.2f}")
-    col_b.metric("Imposto Importação (60%)", f"R$ {imposto_importacao:.2f}")
-    col_c.metric("Custo Total", f"R$ {total:.2f}")
-
-# --- ABA JAPÃO DHL ---
-with tab2:
-    st.header("Cálculo Japão (Courier / DHL)")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        valor_iene_dhl = st.number_input(
-            "Valor em Iene (¥)",
+    col3, col4 = st.columns(2)
+    with col3:
+        frete_brl = st.number_input(
+            "Frete em Reais (R$)",
             min_value=0.0,
-            value=5000.0,
-            step=100.0,
-            key="dhl_iene",
+            value=0.0,
+            step=5.0,
+            key="j_frete",
         )
-    with col2:
-        cotacao_iene_dhl = st.number_input(
-            "Cotação Iene x Real (R$)",
-            min_value=0.0001,
-            value=cotacoes["JPY"],
-            format="%.4f",
-            key="dhl_cot",
+    with col4:
+        despacho_postal = st.number_input(
+            "Despacho Postal dos Correios (R$)",
+            min_value=0.0,
+            value=18.10,
+            step=1.0,
+            key="j_despacho",
         )
 
-    valor_produto_dhl = valor_iene_dhl * cotacao_iene_dhl
-    frete_dhl = st.number_input(
-        "Frete DHL em Reais (R$)",
+    aliquota_icms = st.number_input(
+        "Alíquota ICMS (%)",
         min_value=0.0,
-        value=0.0,
-        step=5.0,
-        key="dhl_frete",
-    )
+        max_value=100.0,
+        value=17.0,
+        step=1.0,
+        key="j_icms_rate",
+    ) / 100.0
 
-    valor_aduaneiro_dhl = valor_produto_dhl + frete_dhl
-    imposto_importacao_dhl = valor_aduaneiro_dhl * 0.60
-    total_dhl = valor_aduaneiro_dhl + imposto_importacao_dhl
+    # --- MEMÓRIA DE CÁLCULO ---
+    valor_produto_brl = valor_iene * cotacao_iene
+    valor_aduaneiro = valor_produto_brl + frete_brl
+    imposto_importacao = valor_aduaneiro * 0.60  # 60%
+
+    # Cálculo do ICMS por dentro (Base = (Valor Aduaneiro + II) / (1 - Alíquota))
+    if (1 - aliquota_icms) > 0:
+        base_icms = (valor_aduaneiro + imposto_importacao) / (1 - aliquota_icms)
+        valor_icms = base_icms * aliquota_icms
+    else:
+        base_icms = 0.0
+        valor_icms = 0.0
+
+    total_impostos = imposto_importacao + valor_icms + despacho_postal
+    total_geral = valor_produto_brl + frete_brl + total_impostos
 
     st.markdown("---")
-    st.subheader("Resumo do Cálculo DHL")
+    st.subheader("📊 Detalhamento dos Impostos e Taxas")
 
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Valor Produto (R$)", f"R$ {valor_produto_dhl:.2f}")
-    col_b.metric("Imposto Importação (60%)", f"R$ {imposto_importacao_dhl:.2f}")
-    col_c.metric("Custo Total", f"R$ {total_dhl:.2f}")
+    # Exibição dos itens
+    col_det1, col_det2, col_det3 = st.columns(3)
+    col_det1.metric("Valor Produto", f"R$ {valor_produto_brl:.2f}")
+    col_det2.metric("Frete (R$)", f"R$ {frete_brl:.2f}")
+    col_det3.metric("Valor Aduaneiro Total", f"R$ {valor_aduaneiro:.2f}")
+
+    col_tax1, col_tax2, col_tax3 = st.columns(3)
+    col_tax1.metric("Imposto de Importação (60%)", f"R$ {imposto_importacao:.2f}")
+    col_tax2.metric(f"ICMS ({aliquota_icms*100:.0f}%)", f"R$ {valor_icms:.2f}")
+    col_tax3.metric("Despacho Postal", f"R$ {despacho_postal:.2f}")
+
+    st.markdown("---")
+    st.subheader("💰 Resumo Final")
+
+    res_a, res_b = st.columns(2)
+    res_a.metric("Total de Impostos e Taxas", f"R$ {total_impostos:.2f}")
+    res_b.metric("TOTAL GERAL DA COMPRA", f"R$ {total_geral:.2f}")
+
+    with st.expander("🔍 Ver memória de cálculo (fórmulas)"):
+        st.write(f"- **Valor do Produto (R$):** ¥ {valor_iene:.2f} × R$ {cotacao_iene:.4f} = **R$ {valor_produto_brl:.2f}**")
+        st.write(f"- **Imposto de Importação (60%):** R$ {valor_aduaneiro:.2f} × 60% = **R$ {imposto_importacao:.2f}**")
+        st.write(f"- **Base de Cálculo ICMS:** (R$ {valor_aduaneiro:.2f} + R$ {imposto_importacao:.2f}) ÷ (1 - {aliquota_icms:.2f}) = **R$ {base_icms:.2f}**")
+        st.write(f"- **Valor ICMS:** R$ {base_icms:.2f} × {aliquota_icms*100:.0f}% = **R$ {valor_icms:.2f}**")
+        st.write(f"- **Total a Pagar de Impostos:** R$ {imposto_importacao:.2f} + R$ {valor_icms:.2f} + R$ {despacho_postal:.2f} = **R$ {total_impostos:.2f}**")
 
 # --- ABA FRETE 2026 ---
-with tab3:
+with tab2:
     st.header("Estimativa de Frete 2026")
 
     cotacao_iene_frete = st.number_input(
@@ -200,60 +196,3 @@ with tab3:
 
     st.markdown("---")
     st.metric("Valor do Frete Convertido", f"R$ {frete_brl_calc:.2f}")
-
-# --- ABA SHOPEE ---
-with tab4:
-    st.header("Cálculo Shopee / Remessa Conforme")
-
-    dolar_hoje = st.number_input(
-        "Cotação Dólar (R$)",
-        min_value=0.0,
-        value=cotacoes["USD"],
-        format="%.2f",
-        key="sh_dolar",
-    )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        prod_shopee = st.number_input(
-            "Valor do Produto (R$)",
-            min_value=0.0,
-            value=0.0,
-            step=10.0,
-            key="sh_prod",
-        )
-    with col2:
-        frete_shopee = st.number_input(
-            "Frete (R$)", min_value=0.0, value=0.0, step=5.0, key="sh_frete"
-        )
-
-    aliquota_icms = st.number_input(
-        "Alíquota ICMS",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.17,
-        format="%.2f",
-        key="sh_icms_rate",
-    )
-    despacho_postal = st.number_input(
-        "Despacho Postal (R$)",
-        min_value=0.0,
-        value=0.0,
-        step=1.0,
-        key="sh_despacho",
-    )
-
-    valor_aduaneiro_sh = prod_shopee + frete_shopee
-    imposto_imp_sh = 0.0
-    icms_sh = (valor_aduaneiro_sh + imposto_imp_sh) * aliquota_icms
-    total_shopee = (
-        valor_aduaneiro_sh + imposto_imp_sh + icms_sh + despacho_postal
-    )
-
-    st.markdown("---")
-    st.subheader("Resumo do Cálculo Shopee")
-
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Valor Aduaneiro", f"R$ {valor_aduaneiro_sh:.2f}")
-    col_b.metric("ICMS", f"R$ {icms_sh:.2f}")
-    col_c.metric("Custo Total", f"R$ {total_shopee:.2f}")
