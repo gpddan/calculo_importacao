@@ -1,4 +1,5 @@
 import json
+import math
 import urllib.request
 from datetime import datetime
 import zoneinfo
@@ -7,6 +8,14 @@ import streamlit as st
 st.set_page_config(
     page_title="Calculadora de Importação", page_icon="📦", layout="centered"
 )
+
+
+# --- FUNÇÃO DE CÁLCULO DE FRETE POR PESO (1227 + 346.5 A CADA 100G) ---
+def calcular_frete_por_peso(peso_g):
+    if peso_g <= 0:
+        return 0.0
+    incrementos = math.ceil(peso_g / 100.0) - 1
+    return 1227.0 + (incrementos * 346.5)
 
 
 # --- FUNÇÃO PARA BUSCAR COTAÇÕES EM TEMPO REAL COM FALLBACK ---
@@ -65,7 +74,7 @@ st.metric("Cotação JPY/BRL (Iene)", f"R$ {cotacoes['JPY']:.4f}")
 
 st.markdown("---")
 
-tab1, tab2 = st.tabs(["Japão (Calculadora Completa)", "Estimativa de Frete"])
+tab1, tab2 = st.tabs(["Japão (Calculadora Completa)", "Tabela de Frete por Peso"])
 
 # --- ABA JAPÃO ---
 with tab1:
@@ -114,7 +123,7 @@ with tab1:
     st.markdown("---")
     st.subheader("✈️ Envio Internacional")
 
-    # Modalidade do Envio e Frete Internacional
+    # Seleção de tipo de frete e método de inserção (Peso vs Valor Direto)
     col5, col6 = st.columns(2)
     with col5:
         tipo_frete = st.selectbox(
@@ -126,12 +135,39 @@ with tab1:
             key="j_tipo_frete",
         )
     with col6:
+        modo_entrada_frete = st.radio(
+            "Como deseja informar o frete internacional?",
+            options=["Calcular por Peso (g)", "Digitar Valor em Ienes (¥)"],
+            horizontal=True,
+            key="j_modo_frete",
+        )
+
+    # Lógica dinâmica para Peso ou Valor Direto
+    if modo_entrada_frete == "Calcular por Peso (g)":
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            peso_j_g = st.number_input(
+                "Peso estimado do pacote (gramas)",
+                min_value=0,
+                value=470,
+                step=50,
+                key="j_peso_g",
+            )
+        frete_intl_jpy = calcular_frete_por_peso(peso_j_g)
+        with col_p2:
+            st.metric(
+                "Frete Internacional Calculado",
+                f"¥ {frete_intl_jpy:,.2f}",
+                help="¥ 1.227 para os primeiros 100g + ¥ 346,50 a cada 100g adicionais.",
+            )
+    else:
+        peso_j_g = 0
         frete_intl_jpy = st.number_input(
-            "Frete Internacional (¥)",
+            "Valor do Frete Internacional (¥)",
             min_value=0.0,
             value=2613.0,
-            step=100.0,
-            key="j_frete_intl",
+            step=50.0,
+            key="j_frete_intl_manual",
         )
 
     # Taxas Aduaneiras e Correios
@@ -163,7 +199,6 @@ with tab1:
     frete_japao_brl = frete_japao_jpy * cotacao_iene
     frete_intl_brl = frete_intl_jpy * cotacao_iene
 
-    # Determina se o frete internacional entra na base tributável
     incide_imposto_frete = "EMS" in tipo_frete
 
     if incide_imposto_frete:
@@ -171,10 +206,8 @@ with tab1:
     else:
         valor_tributavel = valor_prod_brl
 
-    # Imposto de Importação (60%)
     imposto_importacao = valor_tributavel * 0.60
 
-    # ICMS por Dentro
     if (1 - aliquota_icms) > 0:
         base_icms = (valor_tributavel + imposto_importacao) / (
             1 - aliquota_icms
@@ -198,7 +231,10 @@ with tab1:
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Produto (R$)", f"R$ {valor_prod_brl:.2f}")
-    c2.metric("Serviços Japão (Buyee + Frete JP)", f"R$ {taxa_buyee_brl + frete_japao_brl:.2f}")
+    c2.metric(
+        "Serviços Japão (Buyee + Frete JP)",
+        f"R$ {taxa_buyee_brl + frete_japao_brl:.2f}",
+    )
     c3.metric(
         "Base Tributável (Aduana)",
         f"R$ {valor_tributavel:.2f}",
@@ -228,8 +264,9 @@ with tab1:
         st.write(
             f"- **Frete Japão (Doméstico):** ¥ {frete_japao_jpy:.2f} = **R$ {frete_japao_brl:.2f}** *(Isento de tributos aduaneiros)*"
         )
+        frete_origem_txt = f"{peso_j_g}g" if modo_entrada_frete == "Calcular por Peso (g)" else "manual"
         st.write(
-            f"- **Frete Internacional:** ¥ {frete_intl_jpy:.2f} = **R$ {frete_intl_brl:.2f}** *({'Tributado' if incide_imposto_frete else 'Isento de tributos aduaneiros'})*"
+            f"- **Frete Internacional ({frete_origem_txt}):** ¥ {frete_intl_jpy:.2f} = **R$ {frete_intl_brl:.2f}** *({'Tributado' if incide_imposto_frete else 'Isento de tributos aduaneiros'})*"
         )
         st.write(
             f"- **Base Tributável:** R$ {valor_tributavel:.2f} *(Produto {'+ Frete Intl' if incide_imposto_frete else ''})*"
@@ -244,9 +281,9 @@ with tab1:
             f"- **Valor ICMS:** R$ {base_icms:.2f} × {aliquota_icms*100:.0f}% = **R$ {valor_icms:.2f}**"
         )
 
-# --- ABA FRETE 2026 ---
+# --- ABA 2: CONSULTA RÁPIDA DE FRETE ---
 with tab2:
-    st.header("Estimativa Rápida de Frete")
+    st.header("Tabela Rápida de Frete por Peso")
 
     cotacao_iene_frete = st.number_input(
         "Cotação do Iene Hoje (R$)",
@@ -256,25 +293,20 @@ with tab2:
         key="f_cot",
     )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        peso_g = st.number_input(
-            "Peso estimado (gramas)",
-            min_value=0,
-            value=470,
-            step=50,
-            key="f_peso",
-        )
-    with col2:
-        frete_iene = st.number_input(
-            "Valor do Frete em Ienes (¥)",
-            min_value=0.0,
-            value=2613.0,
-            step=50.0,
-            key="f_iene",
-        )
+    peso_g = st.number_input(
+        "Peso estimado (gramas)",
+        min_value=0,
+        value=470,
+        step=50,
+        key="f_peso",
+    )
 
-    frete_brl_calc = frete_iene * cotacao_iene_frete
+    frete_calc_iene = calcular_frete_por_peso(peso_g)
+    frete_calc_brl = frete_calc_iene * cotacao_iene_frete
 
     st.markdown("---")
-    st.metric("Valor do Frete Convertido", f"R$ {frete_brl_calc:.2f}")
+    col_f1, col_f2 = st.columns(2)
+    col_f1.metric("Valor do Frete em Ienes", f"¥ {frete_calc_iene:,.2f}")
+    col_f2.metric("Valor do Frete Convertido", f"R$ {frete_calc_brl:.2f}")
+
+    st.caption("ℹ️ Regra da tabela: ¥ 1.227 até 100g + ¥ 346,50 para cada 100g adicionais.")
