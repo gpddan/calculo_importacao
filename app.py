@@ -99,7 +99,7 @@ with tab1:
             value=500.0,
             step=50.0,
             key="j_buyee",
-            help="Taxa de serviço padrão da Buyee (não isenta impostos).",
+            help="Taxa de serviço da Buyee (NÃO incide imposto de importação).",
         )
     with col4:
         frete_japao_jpy = st.number_input(
@@ -108,7 +108,7 @@ with tab1:
             value=0.0,
             step=50.0,
             key="j_frete_jp",
-            help="Frete dentro do Japão até o armazém. NÃO incide imposto de importação.",
+            help="Frete dentro do Japão até o armazém (NÃO incide imposto de importação).",
         )
 
     st.markdown("---")
@@ -163,13 +163,13 @@ with tab1:
     frete_japao_brl = frete_japao_jpy * cotacao_iene
     frete_intl_brl = frete_intl_jpy * cotacao_iene
 
-    # Determina se o frete internacional entra na base de cálculo tributável
+    # Determina se o frete internacional entra na base tributável
     incide_imposto_frete = "EMS" in tipo_frete
 
     if incide_imposto_frete:
-        valor_tributavel = valor_prod_brl + taxa_buyee_brl + frete_intl_brl
+        valor_tributavel = valor_prod_brl + frete_intl_brl
     else:
-        valor_tributavel = valor_prod_brl + taxa_buyee_brl
+        valor_tributavel = valor_prod_brl
 
     # Imposto de Importação (60%)
     imposto_importacao = valor_tributavel * 0.60
@@ -197,12 +197,12 @@ with tab1:
     st.subheader("📊 Resumo Visual dos Custos")
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Produto + Buyee", f"R$ {valor_prod_brl + taxa_buyee_brl:.2f}")
-    c2.metric("Fretes (Japão + Intl)", f"R$ {frete_japao_brl + frete_intl_brl:.2f}")
+    c1.metric("Produto (R$)", f"R$ {valor_prod_brl:.2f}")
+    c2.metric("Serviços Japão (Buyee + Frete JP)", f"R$ {taxa_buyee_brl + frete_japao_brl:.2f}")
     c3.metric(
         "Base Tributável (Aduana)",
         f"R$ {valor_tributavel:.2f}",
-        help="Valor usado para aplicar os 60% de imposto.",
+        help="Valor sobre o qual incidem os 60% de imposto.",
     )
 
     st.markdown("---")
@@ -223,16 +223,16 @@ with tab1:
             f"- **Produto:** ¥ {valor_iene:.2f} = **R$ {valor_prod_brl:.2f}**"
         )
         st.write(
-            f"- **Taxa Buyee:** ¥ {taxa_buyee_jpy:.2f} = **R$ {taxa_buyee_brl:.2f}**"
+            f"- **Taxa Buyee:** ¥ {taxa_buyee_jpy:.2f} = **R$ {taxa_buyee_brl:.2f}** *(Isenta de tributos aduaneiros)*"
         )
         st.write(
-            f"- **Frete Japão (Doméstico):** ¥ {frete_japao_jpy:.2f} = **R$ {frete_japao_brl:.2f}** *(Isento de impostos)*"
+            f"- **Frete Japão (Doméstico):** ¥ {frete_japao_jpy:.2f} = **R$ {frete_japao_brl:.2f}** *(Isento de tributos aduaneiros)*"
         )
         st.write(
-            f"- **Frete Internacional:** ¥ {frete_intl_jpy:.2f} = **R$ {frete_intl_brl:.2f}** *({'Tributado' if incide_imposto_frete else 'Isento de impostos'})*"
+            f"- **Frete Internacional:** ¥ {frete_intl_jpy:.2f} = **R$ {frete_intl_brl:.2f}** *({'Tributado' if incide_imposto_frete else 'Isento de tributos aduaneiros'})*"
         )
         st.write(
-            f"- **Base Tributável:** R$ {valor_tributavel:.2f} *(Produto + Buyee {'+ Frete Intl' if incide_imposto_frete else ''})*"
+            f"- **Base Tributável:** R$ {valor_tributavel:.2f} *(Produto {'+ Frete Intl' if incide_imposto_frete else ''})*"
         )
         st.write(
             f"- **Imposto de Importação (60%):** R$ {valor_tributavel:.2f} × 60% = **R$ {imposto_importacao:.2f}**"
